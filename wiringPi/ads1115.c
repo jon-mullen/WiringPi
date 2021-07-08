@@ -68,6 +68,7 @@
 // Programmable Gain Amplifier
 
 #define	CONFIG_PGA_MASK		(0x0E00)
+
 #define	CONFIG_PGA_6_144V	(0x0000)	// +/-6.144V range = Gain 2/3
 #define	CONFIG_PGA_4_096V	(0x0200)	// +/-4.096V range = Gain 1
 #define	CONFIG_PGA_2_048V	(0x0400)	// +/-2.048V range = Gain 2 (default)
@@ -78,15 +79,26 @@
 #define	CONFIG_MODE		(0x0100)	// 0 is continuous, 1 is single-shot (default)
 
 // Data Rate
+#define CONFIG_DR_MASK    (0x00E0)
 
-#define	CONFIG_DR_MASK		(0x00E0)
-#define	CONFIG_DR_8SPS		(0x0000)	//   8 samples per second
-#define	CONFIG_DR_16SPS		(0x0020)	//  16 samples per second
-#define	CONFIG_DR_32SPS		(0x0040)	//  32 samples per second
-#define	CONFIG_DR_64SPS		(0x0060)	//  64 samples per second
-#define	CONFIG_DR_128SPS	(0x0080)	// 128 samples per second (default)
-#define	CONFIG_DR_475SPS	(0x00A0)	// 475 samples per second
-#define	CONFIG_DR_860SPS	(0x00C0)	// 860 samples per second
+// 1115
+#define	CONFIG_1115_DR_8SPS		(0x0000)	//   8 samples per second
+#define	CONFIG_1115_DR_16SPS		(0x0020)	//  16 samples per second
+#define	CONFIG_1115_DR_32SPS		(0x0040)	//  32 samples per second
+#define	CONFIG_1115_DR_64SPS		(0x0060)	//  64 samples per second
+#define	CONFIG_1115_DR_128SPS	(0x0080)	// 128 samples per second (default)
+#define	CONFIG_1115_DR_475SPS	(0x00A0)	// 475 samples per second
+#define	CONFIG_1115_DR_860SPS	(0x00C0)	// 860 samples per second
+
+// 1015
+#define CONFIG_1015_DR_128SPS (0x0000)  ///< 128 samples per second
+#define CONFIG_1015_DR_250SPS (0x0020)  ///< 250 samples per second
+#define CONFIG_1015_DR_490SPS (0x0040)  ///< 490 samples per second
+#define CONFIG_1015_DR_920SPS (0x0060)  ///< 920 samples per second
+#define CONFIG_1015_DR_1600SPS (0x0080) ///< 1600 samples per second (default)
+#define CONFIG_1015_DR_2400SPS (0x00A0) ///< 2400 samples per second
+#define CONFIG_1015_DR_3300SPS (0x00C0) ///< 3300 samples per second
+
 
 // Comparator mode
 
@@ -117,9 +129,16 @@
 #define	CONFIG_DEFAULT		(0x8583)	// From the datasheet
 
 
-static const uint16_t dataRates [8] =
+static const uint16_t ads1115_dataRates [8] =
 {
-  CONFIG_DR_8SPS, CONFIG_DR_16SPS, CONFIG_DR_32SPS, CONFIG_DR_64SPS, CONFIG_DR_128SPS, CONFIG_DR_475SPS, CONFIG_DR_860SPS
+  CONFIG_1115_DR_8SPS, CONFIG_1115_DR_16SPS, CONFIG_1115_DR_32SPS, CONFIG_1115_DR_64SPS,
+  CONFIG_1115_DR_128SPS, CONFIG_1115_DR_475SPS, CONFIG_1115_DR_860SPS
+} ;
+
+static const uint16_t ads1015_dataRates [8] =
+{
+  CONFIG_1015_DR_128SPS, CONFIG_1015_DR_250SPS, CONFIG_1015_DR_490SPS, CONFIG_1015_DR_920SPS,
+  CONFIG_1015_DR_1600SPS, CONFIG_1015_DR_2400SPS, CONFIG_1015_DR_3300SPS
 } ;
 
 static const uint16_t gains [6] =
@@ -213,7 +232,7 @@ static int myAnalogRead (struct wiringPiNodeStruct *node, int pin)
  *********************************************************************************
  */
 
-static void myDigitalWrite (struct wiringPiNodeStruct *node, int pin, int data)
+static void myDigitalWrite1115 (struct wiringPiNodeStruct *node, int pin, int data)
 {
   int chan = pin - node->pinBase ;
   chan &= 3 ;
@@ -228,11 +247,40 @@ static void myDigitalWrite (struct wiringPiNodeStruct *node, int pin, int data)
   {
     if ( (data < 0) || (data > 7) )	// Use default if out of range
       data = 4 ;
-    node->data1 = dataRates [data] ;	// Bugfix 0-1 by "Eric de jong (gm)" <ericdejong@gmx.net> - Thanks.
+    node->data1 = ads1115_dataRates [data] ;	// Bugfix 0-1 by "Eric de jong (gm)" <ericdejong@gmx.net> - Thanks.
   }
   
 }
 
+/*
+ * digitalWrite:
+ *  It may seem odd to have a digital write here, but it's the best way
+ *  to pass paramters into the chip in the wiringPi way of things.
+ *  We have 2 digital registers:
+ *    0 is the gain control
+ *    1 is the data rate control
+ *********************************************************************************
+ */
+
+static void myDigitalWrite1015 (struct wiringPiNodeStruct *node, int pin, int data)
+{
+  int chan = pin - node->pinBase ;
+  chan &= 3 ;
+
+  if (chan == 0)  // Gain Control
+  {
+    if ( (data < 0) || (data > 6) ) // Use default if out of range
+      data = 2 ;
+    node->data0 = gains [data] ;
+  }
+  else      // Data rate control
+  {
+    if ( (data < 0) || (data > 7) ) // Use default if out of range
+      data = 4 ;
+    node->data1 = ads1015_dataRates [data] ;  // Bugfix 0-1 by "Eric de jong (gm)" <ericdejong@gmx.net> - Thanks.
+  }
+  
+}
 
 /*
  * analogWrite:
@@ -284,10 +332,37 @@ int ads1115Setup (const int pinBase, int i2cAddr)
 
   node->fd           = fd ;
   node->data0        = CONFIG_PGA_4_096V ;	// Gain in data0
-  node->data1        = CONFIG_DR_128SPS ;	// Samples/sec in data1
+  node->data1        = CONFIG_1115_DR_128SPS ;	// Samples/sec in data1
   node->analogRead   = myAnalogRead ;
   node->analogWrite  = myAnalogWrite ;
-  node->digitalWrite = myDigitalWrite ;
+  node->digitalWrite = myDigitalWrite1115 ;
+
+  return TRUE ;
+}
+
+/*
+ * ads1015Setup:
+ *  Create a new wiringPi device node for an ads1015 on the Pi's
+ *  I2C interface.
+ *********************************************************************************
+ */
+
+int ads1015Setup (const int pinBase, int i2cAddr)
+{
+  struct wiringPiNodeStruct *node ;
+  int fd ;
+
+  if ((fd = wiringPiI2CSetup (i2cAddr)) < 0)
+    return FALSE ;
+
+  node = wiringPiNewNode (pinBase, 8) ;
+
+  node->fd           = fd ;
+  node->data0        = CONFIG_PGA_4_096V ;  // Gain in data0
+  node->data1        = CONFIG_1015_DR_1600SPS ; // Samples/sec in data1
+  node->analogRead   = myAnalogRead ;
+  node->analogWrite  = myAnalogWrite ;
+  node->digitalWrite = myDigitalWrite1015 ;
 
   return TRUE ;
 }
